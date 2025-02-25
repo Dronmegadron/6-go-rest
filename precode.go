@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -39,14 +40,87 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
-// ...
+// getTasks Обработчик для получения всех задач
+func getTasks(w http.ResponseWriter, r *http.Request) {
+	// сериализуем данные из слайса tasks
+	resp, err := json.Marshal(tasks)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// в заголовок записываем тип контента, у нас это данные в формате JSON
+	w.Header().Set("Content-Type", "application/json")
+	// так как все успешно, то статус OK
+	w.WriteHeader(http.StatusOK)
+	// записываем сериализованные в JSON данные в тело ответа
+	w.Write(resp)
+}
+
+// postTask Обработчик для отправки задачи на сервер
+func postTask(w http.ResponseWriter, r *http.Request) {
+	var task Task
+
+	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// 25.02 проверяем, что такой задачи нет
+	if _, ex := tasks[task.ID]; ex {
+		http.Error(w, "Задача с таким ID уже существует", http.StatusBadRequest)
+		return
+	}
+
+	tasks[task.ID] = task
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+}
+
+// getTask Обработчик для получения задачи по ID
+func getTask(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	task, ok := tasks[id]
+	if !ok {
+		http.Error(w, "Задача не найдена", http.StatusBadRequest) // 25.02 поправляем статус
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// 25.02 меняем json.Marshal(task) на json.NewEncoder(w).Encode(task)
+	// но меня смущает то что мы уже отправили статусОК и ниже обрабатываем ошибку
+	if err := json.NewEncoder(w).Encode(task); err != nil {
+		http.Error(w, "Ошибка при сериализации JSON", http.StatusInternalServerError)
+	}
+}
+
+// deleteTask Обработчик для удаления задачи по ID
+func deleteTask(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if _, exists := tasks[id]; !exists {
+		http.Error(w, "Задача не найдена", http.StatusBadRequest)
+		return
+	}
+
+	delete(tasks, id)
+
+	w.Header().Set("Content-Type", "application/json") // 25.02 устанавливаем заголовок
+	w.WriteHeader(http.StatusOK)
+}
 
 func main() {
 	r := chi.NewRouter()
 
 	// здесь регистрируйте ваши обработчики
-	// ...
+	r.Get("/tasks", getTasks)           // Обработчик для получения всех задач
+	r.Post("/tasks", postTask)          // Обработчик для отправки задачи на сервер
+	r.Get("/tasks/{id}", getTask)       // Обработчик для получения задачи по ID
+	r.Delete("/tasks/{id}", deleteTask) // Удаление задачи по ID
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
