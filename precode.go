@@ -66,10 +66,16 @@ func postTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 25.02 проверяем, что такой задачи нет
+	if _, ex := tasks[task.ID]; ex {
+		http.Error(w, "Задача с таким ID уже существует", http.StatusBadRequest)
+		return
+	}
+
 	tasks[task.ID] = task
 
-	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 }
 
 // getTask Обработчик для получения задачи по ID
@@ -78,19 +84,18 @@ func getTask(w http.ResponseWriter, r *http.Request) {
 
 	task, ok := tasks[id]
 	if !ok {
-		http.Error(w, "Задача не найдена", http.StatusNoContent)
-		return
-	}
-
-	resp, err := json.Marshal(task)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "Задача не найдена", http.StatusBadRequest) // 25.02 поправляем статус
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+
+	// 25.02 меняем json.Marshal(task) на json.NewEncoder(w).Encode(task)
+	// но меня смущает то что мы уже отправили статусОК и ниже обрабатываем ошибку
+	if err := json.NewEncoder(w).Encode(task); err != nil {
+		http.Error(w, "Ошибка при сериализации JSON", http.StatusInternalServerError)
+	}
 }
 
 // deleteTask Обработчик для удаления задачи по ID
@@ -104,6 +109,7 @@ func deleteTask(w http.ResponseWriter, r *http.Request) {
 
 	delete(tasks, id)
 
+	w.Header().Set("Content-Type", "application/json") // 25.02 устанавливаем заголовок
 	w.WriteHeader(http.StatusOK)
 }
 
